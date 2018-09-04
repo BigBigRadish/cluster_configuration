@@ -1,0 +1,126 @@
+以下是两台机子组成的集群(Ubuntu16.04+CentOS6)
+
+主控制节点的/etc/hosts作如下修改
+10.85.11.246 Master
+42.51.167.167 Slave1
+其中42.51.167.167 是云主机ip
+10.85.11.246是ifconfig命令返回的本地局域网ip
+
+
+
+
+
+
+core-site.xml
+设置hdfs://master:9000
+
+修改yarn-site.xml
+ResourceManager主机与nodemanger的链接地址
+ResourceManager主机与ApplicationMaster的连接地址
+ResourceManager与客户端的连接地址.
+修改mapred-site.xml
+修改hdfs-site.xml
+修改hadoop中的slaves和masters文件
+
+
+以上所有配置在所有节点中复制一遍(含Master和datanode)
+各自节点(筆記本和雲主機)的hostname分别改成master和data1
+
+
+
+
+
+
+
+另外要在自己电脑(也就是master)终端执行:
+xhost + master
+否则root权限下面的gedit就不能用了
+
+./start-yarn.sh
+
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆拷貝master的配置給slave主機☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+注意,雲主機上必須先給$HADOOP_HOME以及$SPARK_HOME開權限,否則下面的命令是無法拷貝配置文件過去的..
+拷貝spark配置文件過去
+(python2.7) appleyuchi@master:~$ scp  -r     /home/appleyuchi/bigdata/spark-2.3.1-bin-hadoop2.7/conf  appleyuchi@data1:/home/appleyuchi/bigdata/spark-2.3.1-bin-hadoop2.7
+拷貝HADOOP配置文件過去
+scp  -r    $HADOOP_HOME/etc/hadoop/*  appleyuchi@data1:$HADOOP_HOME/etc/hadoop/
+
+
+☆☆☆☆☆☆☆☆☆☆☆☆☆啓動集羣☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+./start-yarn.sh
+./start-dfs.sh
+http://localhost:8088/cluster
+http://master:8088/cluster/nodes
+http://master:50070/dfshealth.html#tab-overview
+
+
+
+
+☆☆☆☆☆☆☆☆☆☆☆☆最终效果☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+动之后使用jps命令可以查看到SparkMaster已经启动了namenode，
+SparkWorker1和SparkWorker2都启动了datanode，
+说明hadoop的HDFS文件系统已经启动了。
+
+網頁中觀看:
+
+
+
+
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+CentOS6免密码配置
+目標:筆記本的appleyuchi登錄服務器的appleyuchi帳戶
+總體思路是,客戶機(筆記本)的公鑰拷貝到服務器的/home/appleyuchi/.sshauthorized_keys文件中
+
+
+ssh-keygen -t rsa 一路回车
+ssh-copy-id appleyuchi@data1
+chmod 700 /home/appleyuchi/.ssh
+chmod 600 /home/appleyuchi/.ssh/authorized_keys
+
+修改云主机ssh配置文件"/etc/ssh/sshd_config"的下列内容，将以下内容的注释去掉：
+RSAAuthentication yes # 启用 RSA 认证
+PubkeyAuthentication yes # 启用公钥私钥配对认证方式
+筆記本的公鑰拷貝到雲主機,然後用以下命令追加,不要使用手動復制,因爲可能產生不必要的回車.
+cat /root/id_rsa.pub >> /root/.ssh/authorized_keys
+
+
+
+service sshd restart
+---------------------------------------------------------------------------------------
+要确保下面的都是yes
+[root@iZ2ze97cgcumk8opq8h8Z .ssh]# egrep "PubkeyAuthentication" /etc/ssh/sshd_config
+#PubkeyAuthentication yes
+PubkeyAuthentication yes
+[root@iZ2ze97cgcuopqm28h8Z .ssh]# egrep "PasswordAuthentication" /etc/ssh/sshd_config
+PasswordAuthentication yes
+---------------------------------------------------------------------------------------
+用来调试错误
+ssh appleyuchi@data1 -v
+yum install firewalld systemd -y
+---------------------------------------------------------------------------------------
+vi /etc/selinux/config
+修改内容如下：
+把SELINUX=enforcing修改为SELINUX=disabled
+---------------------------------------------------------------------------------------
+注意,權限不能開太大,也不能開太小,要確保三處沒有多餘的寫權限
+首先是/home/appleyuchi文件夾的權限
+-drwxr-xr-x. 5 appleyuchi appleyuchi 4096 8月  21 18:57 appleyuchi
+---------------------------------------------------------------------------------------
+.ssh內的文件屬性
+[appleyuchi@data1 .ssh]$ ls -l
+total 16
+-rw-r--r--. 1 appleyuchi appleyuchi  399 Aug 21 17:01 authorized_keys
+-rwxr-xr-x. 1 appleyuchi appleyuchi 1675 Aug 21 16:23 id_rsa
+-rwxr-xr-x. 1 appleyuchi appleyuchi  398 Aug 21 16:23 id_rsa.pub
+-rwxr-xr-x. 1 appleyuchi appleyuchi 1179 Aug 21 18:23 known_hosts
+---------------------------------------------------------------------------------------
+以及.ssh文件夾本身
+-rwxr-xr-x. 1 root       root        399 Aug 21 16:50 id_rsa.pub
+---------------------------------------------------------------------------------------
+
+
+附錄:
+從雲主機拷貝到本地:
+scp root@data1:/etc/ssh/sshd_config ~/
+從本地拷貝到雲主機:
+scp -r   /home/appleyuchi/.ssh/id_rsa.pub       root@data1:/home/appleyuchi
